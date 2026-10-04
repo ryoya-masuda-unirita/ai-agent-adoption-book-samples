@@ -22,6 +22,8 @@ Executor → Synthesizer → HITL②）のノードをそのまま import して
    ダミーのままなので、確かめられるのは「実モデルが立てる計画」と
    「実モデルが書くドラフト」まで。
    （anthropic の導入: pip install anthropic）
+   ANTHROPIC_API_KEY の代わりに USE_BEDROCK=1 を設定すると、AWS の認証情報を使って
+   Amazon Bedrock 経由で Claude を呼ぶ（導入: pip install "anthropic[bedrock]"）。
 
 実行:
     python interactive_meeting_prep.py
@@ -56,6 +58,18 @@ from _common import plan_review_reasons, pseudo_plan, pseudo_synthesize
 
 # 実行時は公式ドキュメントで最新のモデル名を確認して置き換える
 MODEL = "claude-sonnet-4-6"
+# Bedrock では推論プロファイルのIDで指定する（jp. は日本国内で処理するプロファイル）
+BEDROCK_MODEL = "jp.anthropic.claude-sonnet-4-6"
+BEDROCK_REGION = "ap-northeast-1"
+
+
+def _use_bedrock() -> bool:
+    """USE_BEDROCK=1 なら、Anthropic の API ではなく Amazon Bedrock 経由で呼ぶ。"""
+    return os.environ.get("USE_BEDROCK") == "1"
+
+
+def _model_name() -> str:
+    return BEDROCK_MODEL if _use_bedrock() else MODEL
 
 # ファイル名にハイフンを含むため、12-2 のモジュールはパス指定で読み込む
 _here = pathlib.Path(__file__).parent
@@ -98,7 +112,7 @@ def _make_live_planner(client):
             '{"desc": "ステップの説明", "tool": "ツール名", "arg": "検索クエリ"}'
         )
         resp = client.messages.create(
-            model=MODEL, max_tokens=1024,
+            model=_model_name(), max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
         text = "".join(b.text for b in resp.content if b.type == "text")
@@ -134,7 +148,7 @@ def _make_live_synthesizer(client):
             "調査結果に無いことは推測で埋めず、「未確認」と明記してください。"
         )
         resp = client.messages.create(
-            model=MODEL, max_tokens=2048,
+            model=_model_name(), max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
         )
         text = "".join(b.text for b in resp.content if b.type == "text")
@@ -180,16 +194,22 @@ def build_graph(planner_fn, synthesizer_fn):
 
 
 def _setup_client():
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("[メモ] ANTHROPIC_API_KEY 未設定のため、擬似Planner／擬似Synthesizerで動きます。")
+    if not (os.environ.get("ANTHROPIC_API_KEY") or _use_bedrock()):
+        print("[メモ] ANTHROPIC_API_KEY / USE_BEDROCK 未設定のため、擬似Planner／擬似Synthesizerで動きます。")
         return None
     try:
-        from anthropic import Anthropic
+        import anthropic
+        if _use_bedrock():
+            import boto3  # noqa: F401  # anthropic[bedrock] で入る。存在確認のみ
     except ImportError:
         print("[メモ] anthropic パッケージ未導入のため、擬似Planner／擬似Synthesizerで動きます"
-              "（本番モードは pip install anthropic）。")
+              "（本番モードは pip install anthropic、Bedrock は pip install 'anthropic[bedrock]'）。")
         return None
-    return Anthropic()
+    if _use_bedrock():
+        # 認証は AWS の認証情報（AWS_PROFILE 等）から。APIキーは使わない
+        return anthropic.AnthropicBedrock(
+            aws_region=os.environ.get("AWS_REGION", BEDROCK_REGION))
+    return anthropic.Anthropic()
 
 
 def _show_plan(plan: list) -> None:

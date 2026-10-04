@@ -14,11 +14,14 @@ RAG の挙動を確かめられるようにしたもの。
    環境変数 ANTHROPIC_API_KEY と anthropic パッケージ（pip install anthropic）が
    必要。組み立てたプロンプトを実際に Claude へ送り、回答を表示する。
    従量課金が発生し、質問と参考文書が Anthropic の API に送信される点に注意。
+   ANTHROPIC_API_KEY の代わりに USE_BEDROCK=1 を設定すると、AWS の認証情報を使って
+   Amazon Bedrock 経由で Claude を呼ぶ（導入: pip install "anthropic[bedrock]"）。
 
 実行:
     python interactive_rag.py                      # 対話モード（検索のみ）
     python interactive_rag.py --question "..."     # 1回だけ実行
     python interactive_rag.py --generate           # 生成あり（要APIキー）
+    USE_BEDROCK=1 AWS_PROFILE=... python interactive_rag.py --generate   # 生成あり（Bedrock）
 
 対話モードは空行の入力、または Ctrl+C / Ctrl+D で終了できる。
 初回実行時は埋め込みモデル（paraphrase-multilingual-MiniLM-L12-v2、約 0.5GB）の
@@ -35,14 +38,14 @@ from importlib import import_module
 rag_minimal = import_module("3-3_rag_minimal")
 rag_generation = import_module("3-4_rag_with_generation")
 
-# 実行時は公式ドキュメントで最新のモデル名を確認して置き換える（3-4 と同じ）
-MODEL = "claude-sonnet-4-5"
+MODEL = rag_generation.MODEL  # モデル名の更新は 3-4 側の定数を書き換える
 
 
 def check_generate_ready() -> None:
     """--generate に必要な前提を起動時に確認する。足りなければ1行で案内して終了。"""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        sys.exit("環境変数 ANTHROPIC_API_KEY が未設定です。--generate なしなら検索のみ試せます。")
+    if not (os.environ.get("ANTHROPIC_API_KEY") or rag_generation.use_bedrock()):
+        sys.exit("環境変数 ANTHROPIC_API_KEY（または USE_BEDROCK=1）が未設定です。"
+                 "--generate なしなら検索のみ試せます。")
     try:
         import anthropic  # noqa: F401  # 存在確認のみ
     except ImportError:
@@ -51,11 +54,9 @@ def check_generate_ready() -> None:
 
 def generate_with_claude(prompt: str) -> str:
     """組み立てたプロンプトを Claude に送り、回答テキストを返す。"""
-    import anthropic
-
-    client = anthropic.Anthropic()  # APIキーは環境変数 ANTHROPIC_API_KEY から
+    client, model = rag_generation.make_client()  # 接続先の切り替えは 3-4 と共通
     message = client.messages.create(
-        model=MODEL,
+        model=model,
         max_tokens=512,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -82,7 +83,7 @@ def answer_question(collection, question: str, n_results: int, generate: bool) -
         print("=== Claude の回答 ===")
         print(generate_with_claude(prompt))
     else:
-        print("[メモ] 生成まで試すには --generate を付けて実行（要 ANTHROPIC_API_KEY）。")
+        print("[メモ] 生成まで試すには --generate を付けて実行（要 ANTHROPIC_API_KEY か USE_BEDROCK=1）。")
 
 
 def main() -> None:
@@ -96,7 +97,7 @@ def main() -> None:
     parser.add_argument(
         "--generate",
         action="store_true",
-        help="検索結果をもとに Claude で回答を生成する（要 ANTHROPIC_API_KEY）",
+        help="検索結果をもとに Claude で回答を生成する（要 ANTHROPIC_API_KEY か USE_BEDROCK=1）",
     )
     parser.add_argument(
         "--n-results",

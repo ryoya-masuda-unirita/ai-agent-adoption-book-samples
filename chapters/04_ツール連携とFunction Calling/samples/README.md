@@ -90,6 +90,30 @@ python 4-2_function_calling_minimal.py
 - **質問文とツール定義が Anthropic の API に送信されます。** サンプルは架空の在庫データなので問題ありませんが、質問を自由入力する際は送信してよい内容か確認してください
 - **出力は実行ごとに変わりえます。** ツールを使うかどうか・最終回答の文面はモデルの判断であり、毎回同一ではありません。「どのツールがどの引数で呼ばれたか」を確認の観点にしてください
 
+## Amazon Bedrock 経由で動かす（任意）
+
+Anthropic の API キーの代わりに、AWS の認証情報で Claude を呼ぶこともできます。Amazon Bedrock は、AWS のアカウントで Claude などのモデルを呼び出せるサービスです。
+
+追加で AWS 用の部品が必要です（uv でセットアップした場合は `uv pip install ...`）。
+
+```bash
+pip install "anthropic[bedrock]"
+```
+
+`USE_BEDROCK=1` を設定して実行します。認証には AWS CLI の設定（`aws configure` や `AWS_PROFILE`）がそのまま使われます。
+
+```bash
+export USE_BEDROCK=1                 # PowerShell は $env:USE_BEDROCK="1"、cmd は set USE_BEDROCK=1
+export AWS_PROFILE=your-profile      # 既定のプロファイルを使うなら不要
+python 4-2_function_calling_minimal.py
+python interactive_function_calling.py
+```
+
+- **モデルとリージョン**：既定は東京リージョン（`ap-northeast-1`）の `jp.anthropic.claude-sonnet-4-6` です。`jp.` は、日本国内で処理する「推論プロファイル」（空いている場所へ自動で振り分ける窓口）を指します。リージョンは環境変数 `AWS_REGION` で、モデルは `4-2_function_calling_minimal.py` 冒頭の定数 `BEDROCK_MODEL` で変えられます。別リージョンでは接頭辞も変わります（例：米国は `us.`）
+- **事前準備**：AWS アカウント側で、そのモデルを呼び出せる状態（権限・利用申請）になっている必要があります
+- **料金と送信先**：AWS の従量課金です。入力した内容は Anthropic の API ではなく AWS（Amazon Bedrock）に送信されます
+- `ANTHROPIC_API_KEY` と両方設定した場合は `USE_BEDROCK=1` が優先されます
+
 ## 自分で確かめる（interactive_function_calling.py）
 
 `interactive_function_calling.py` は、自分の質問で「どのツールがどの引数で呼ばれるか」を観察するための本リポジトリ限定の追加スクリプトです（書籍本文には登場しません）。モデルの判断を観察するにはAPIキーが必要で、未設定のときは起動時にその旨を案内したうえで、①（アプリ→モデルに何が送られるか）だけを表示する構造確認モードで動きます。

@@ -22,6 +22,8 @@ import して使い、レビュー対象をダミー契約書ではなく「自�
    モデルが申告した参照（章・行・抜粋）は 13-6 の根拠照合をそのまま通すので、
    原文と一致しない指摘が「根拠不一致・未確認」に分けられる様子も観察できる。
    （anthropic の導入: pip install anthropic）
+   ANTHROPIC_API_KEY の代わりに USE_BEDROCK=1 を設定すると、AWS の認証情報を使って
+   Amazon Bedrock 経由で Claude を呼ぶ（導入: pip install "anthropic[bedrock]"）。
 
 実行:
     python interactive_doc_review.py --file 契約書.txt   # ファイルを1回レビュー
@@ -52,6 +54,18 @@ from _common import pseudo_worker_analyze
 
 # 実行時は公式ドキュメントで最新のモデル名を確認して置き換える
 MODEL = "claude-sonnet-4-6"
+# Bedrock では推論プロファイルのIDで指定する（jp. は日本国内で処理するプロファイル）
+BEDROCK_MODEL = "jp.anthropic.claude-sonnet-4-6"
+BEDROCK_REGION = "ap-northeast-1"
+
+
+def _use_bedrock() -> bool:
+    """USE_BEDROCK=1 なら、Anthropic の API ではなく Amazon Bedrock 経由で呼ぶ。"""
+    return os.environ.get("USE_BEDROCK") == "1"
+
+
+def _model_name() -> str:
+    return BEDROCK_MODEL if _use_bedrock() else MODEL
 
 # ファイル名にハイフンを含むため、13-2 のモジュールはパス指定で読み込む
 _here = pathlib.Path(__file__).parent
@@ -113,8 +127,10 @@ def _make_live_worker(client):
     モデルを信用せず 13-6 の validate_findings に任せる。
     """
     def live_worker(viewpoint: str, document: list[dict]) -> list[dict]:
+        # 章名と本文を分けて見せる。続けて書くと、モデルが章名ごと excerpt に書き写し、
+        # 根拠照合（本文との一致）に全件落ちる
         doc_text = "\n".join(
-            f"行{r['line']}: {r['chapter']} {r['text']}" for r in document)
+            f"行{r['line']}（章: {r['chapter']}）本文: {r['text']}" for r in document)
         prompt = (
             f"あなたは文書レビューの{viewpoint}の専門家です。次の行番号付き文書を"
             f"{viewpoint}の観点でレビューし、問題点を挙げてください。\n\n"
@@ -123,16 +139,19 @@ def _make_live_worker(client):
             '{"chapter": "該当行の章", "line": 行番号(整数), '
             '"excerpt": "該当行の本文をそのまま書き写す", '
             '"issue": "指摘", "severity": "高/中/低"}\n'
-            "excerpt は該当行の本文（行頭の章名は含めない）と一字一句同じにしてください。"
+            "chapter は該当行の「章:」の値、excerpt は「本文:」より後ろと"
+            "一字一句同じにしてください（章名は含めない）。"
             "指摘が無ければ [] を返してください。"
         )
         resp = client.messages.create(
-            model=MODEL, max_tokens=2048,
+            model=_model_name(), max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
         )
         text = "".join(b.text for b in resp.content if b.type == "text")
         if getattr(resp, "stop_reason", None) != "end_turn":
             raise ValueError("応答が正常に完了していない")
+        # モデルは JSON を ```json ... ``` で囲んで返すことがあるので、囲みだけ外す
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip())
         # 配列全体を検証する。壊れた応答・途中で切れた応答を指摘0件と混同しない。
         items = json.loads(text)
         if not isinstance(items, list):
@@ -195,16 +214,22 @@ def build_graph(worker_fn):
 
 
 def _setup_client():
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("[メモ] ANTHROPIC_API_KEY 未設定のため、擬似Worker（キーワード規則）で動きます。")
+    if not (os.environ.get("ANTHROPIC_API_KEY") or _use_bedrock()):
+        print("[メモ] ANTHROPIC_API_KEY / USE_BEDROCK 未設定のため、擬似Worker（キーワード規則）で動きます。")
         return None
     try:
-        from anthropic import Anthropic
+        import anthropic
+        if _use_bedrock():
+            import boto3  # noqa: F401  # anthropic[bedrock] で入る。存在確認のみ
     except ImportError:
         print("[メモ] anthropic パッケージ未導入のため、擬似Workerで動きます"
-              "（本番モードは pip install anthropic）。")
+              "（本番モードは pip install anthropic、Bedrock は pip install 'anthropic[bedrock]'）。")
         return None
-    return Anthropic()
+    if _use_bedrock():
+        # 認証は AWS の認証情報（AWS_PROFILE 等）から。APIキーは使わない
+        return anthropic.AnthropicBedrock(
+            aws_region=os.environ.get("AWS_REGION", BEDROCK_REGION))
+    return anthropic.Anthropic()
 
 
 def review(graph, text: str) -> None:

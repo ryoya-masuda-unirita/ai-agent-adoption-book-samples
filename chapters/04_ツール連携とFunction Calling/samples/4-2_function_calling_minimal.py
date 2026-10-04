@@ -17,10 +17,13 @@ Function Calling の一往復（必要なら複数往復）を動かす。
    実際に Claude へ問い合わせ、tool_use を取り出して get_stock を実行し、
    tool_result を返して最終回答までループする。
    （anthropic の導入: pip install anthropic）
+   ANTHROPIC_API_KEY の代わりに USE_BEDROCK=1 を設定すると、AWS の認証情報を使って
+   Amazon Bedrock 経由で Claude を呼ぶ（導入: pip install "anthropic[bedrock]"）。
 
 実行:
     python 4-2_function_calling_minimal.py
     ANTHROPIC_API_KEY=sk-... python 4-2_function_calling_minimal.py   # 本番
+    USE_BEDROCK=1 AWS_PROFILE=... python 4-2_function_calling_minimal.py   # 本番（Bedrock）
 
 注意:
     モデル名（MODEL）は新しい世代が出るたびに更新される。実行時は
@@ -33,6 +36,25 @@ import os
 
 # 実行時は公式ドキュメントで最新のモデル名を確認して置き換える
 MODEL = "claude-sonnet-4-6"
+# Bedrock では推論プロファイルのIDで指定する（jp. は日本国内で処理するプロファイル）
+BEDROCK_MODEL = "jp.anthropic.claude-sonnet-4-6"
+BEDROCK_REGION = "ap-northeast-1"
+
+
+def use_bedrock() -> bool:
+    """USE_BEDROCK=1 なら、Anthropic の API ではなく Amazon Bedrock 経由で呼ぶ。"""
+    return os.environ.get("USE_BEDROCK") == "1"
+
+
+def make_client():
+    """接続先に応じたクライアントとモデル名を返す。messages.create の書き方は共通。"""
+    import anthropic
+
+    if use_bedrock():
+        # 認証は AWS の認証情報（AWS_PROFILE 等）から。APIキーは使わない
+        region = os.environ.get("AWS_REGION", BEDROCK_REGION)
+        return anthropic.AnthropicBedrock(aws_region=region), BEDROCK_MODEL
+    return anthropic.Anthropic(), MODEL  # APIキーは環境変数 ANTHROPIC_API_KEY から
 
 # --- ツールの「定義」：モデルに渡す仕様の宣言（実装ではない） ---
 TOOLS = [
@@ -85,15 +107,13 @@ def run_tool(name: str, tool_input: dict) -> str:
 
 
 def run_with_api(question: str) -> None:
-    """ANTHROPIC_API_KEY があれば、実際に Function Calling の往復を回す。"""
-    import anthropic
-
-    client = anthropic.Anthropic()  # APIキーは環境変数 ANTHROPIC_API_KEY から
+    """ANTHROPIC_API_KEY か USE_BEDROCK=1 があれば、実際に Function Calling の往復を回す。"""
+    client, model = make_client()
     messages = [{"role": "user", "content": question}]
 
     while True:
         response = client.messages.create(
-            model=MODEL,
+            model=model,
             max_tokens=1024,
             tools=TOOLS,
             messages=messages,
@@ -140,7 +160,7 @@ def run_with_api(question: str) -> None:
 
 def run_dry(question: str) -> None:
     """APIキーなしのドライラン。往復の構造とダミー実行だけを示す。"""
-    print("[メモ] ANTHROPIC_API_KEY 未設定のため、API は呼ばずに流れだけを表示します。")
+    print("[メモ] ANTHROPIC_API_KEY / USE_BEDROCK 未設定のため、API は呼ばずに流れだけを表示します。")
     print(f"質問: {question}\n")
 
     print("① アプリ → モデル：tools とユーザーの質問を送る")
@@ -159,12 +179,12 @@ def run_dry(question: str) -> None:
     print(f"   tool_result.content = {result!r}\n")
 
     print("⑤ モデル：結果を踏まえて最終回答（例：『商品A-100の在庫は42個です』）")
-    print("\n[メモ] 実際にモデルに判断・回答させるには ANTHROPIC_API_KEY を設定して再実行。")
+    print("\n[メモ] 実際にモデルに判断・回答させるには ANTHROPIC_API_KEY か USE_BEDROCK=1 を設定して再実行。")
 
 
 def main() -> None:
     question = "商品A-100の在庫はいくつ？"
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    if os.environ.get("ANTHROPIC_API_KEY") or use_bedrock():
         try:
             run_with_api(question)
             return

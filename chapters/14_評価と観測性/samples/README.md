@@ -74,6 +74,20 @@ npx promptfoo@latest view              # 結果をブラウザで確認する場
 - **データ送信**：`prompts` と `tests` に書いた内容はプロバイダ（この例ではOpenAI）へ送信されます。社内文書や実データを入れる場合は、社内の規程を確認してください。また、promptfooは匿名の利用統計を送ることがあります（環境変数 `PROMPTFOO_DISABLE_TELEMETRY=1` で無効化できます）。
 - promptfoo自体の更新は速いため、オプション名や既定値は使う時点の公式ドキュメントで確認してください。
 
+### Amazon Bedrock 経由で動かす（任意）
+
+OpenAI の API キーの代わりに、AWS の認証情報で同じ評価を動かす設定例 `promptfooconfig.bedrock.yaml` も用意しています（本リポジトリ限定）。応答を作るモデルと、`llm-rubric` の採点に使うモデルの両方を Amazon Bedrock 上の Claude に向けています。
+
+```bash
+cd samples/14-5_promptfoo
+export AWS_PROFILE=your-profile        # 既定のプロファイルを使うなら不要
+npx promptfoo@latest eval -c promptfooconfig.bedrock.yaml
+```
+
+- 既定は東京リージョン（`ap-northeast-1`）の `jp.anthropic.claude-sonnet-4-6` です。別リージョンで動かす場合は、ファイル内の `id` と `region` を書き換えてください
+- AWS の従量課金です。`prompts` と `tests` の内容は AWS（Amazon Bedrock）に送信されます
+- この2ケースは「不合格」になります。素のモデルは社内文書を持たず、出典を示せないためです。エラーが0件で完走していれば、設定は正しく動いています
+
 ## 自分で確かめる
 
 追加の対話型スクリプトはありません。定数を数行書き換えるだけで、自分の条件を試せます。

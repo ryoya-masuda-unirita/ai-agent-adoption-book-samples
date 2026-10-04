@@ -48,6 +48,8 @@ uv pip install -r requirements.txt
 1. **APIキーなし（ドライラン）** — LLM 呼び出しをスタブ化するなどして、コードの構造と処理の流れをオフラインで確認できます。まずはこちらで全体を掴んでください。
 2. **ANTHROPIC_API_KEY を設定して実行** — 実際に Claude を呼び出して動かします。[Anthropic Console](https://console.anthropic.com/) で API キーを取得し、`export ANTHROPIC_API_KEY=...` を設定してください。
 
+第3・4・7・11・12・13章の本番モードと第14章の promptfoo は、Anthropic の API キーの代わりに **Amazon Bedrock**（AWS の認証情報）でも動かせます。手順は各章 README の「Amazon Bedrock 経由で動かす」を参照してください。
+
 API キーを使う場合の共通の注意:
 
 - **従量課金が発生します。** 各章 README に消費規模の目安を記載しています。

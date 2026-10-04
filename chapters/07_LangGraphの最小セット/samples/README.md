@@ -221,6 +221,29 @@ python 7-5_react_graph.py
 - **入力はAnthropicのAPIに送信されます**。質問文やツール結果がAPIに送られるため、業務上の秘密情報を含む文字列は使わないでください
 - **出力は毎回変わります**。モデルの回答は非決定的で、上記の出力例と一字一句は一致しません。ループの回数が変わることもあります
 
+## Amazon Bedrock 経由で動かす（任意）
+
+Anthropic の API キーの代わりに、AWS の認証情報で Claude を呼ぶこともできます。Amazon Bedrock は、AWS のアカウントで Claude などのモデルを呼び出せるサービスです。
+
+`7-5_react_graph.py` では、`langchain-anthropic` の代わりに `langchain-aws` を導入します（uv の場合は `uv pip install --python .venv ...`）。
+
+```bash
+pip install langchain langchain-aws
+```
+
+`USE_BEDROCK=1` を設定して実行します。認証には AWS CLI の設定（`aws configure` や `AWS_PROFILE`）がそのまま使われます。
+
+```bash
+export USE_BEDROCK=1                 # PowerShell は $env:USE_BEDROCK="1"、cmd は set USE_BEDROCK=1
+export AWS_PROFILE=your-profile      # 既定のプロファイルを使うなら不要
+python 7-5_react_graph.py
+```
+
+- **モデルとリージョン**：既定は東京リージョン（`ap-northeast-1`）の `jp.anthropic.claude-sonnet-4-6` です。`jp.` は、日本国内で処理する「推論プロファイル」（空いている場所へ自動で振り分ける窓口）を指します。リージョンは環境変数 `AWS_REGION` で、モデルは `7-5_react_graph.py` の `build_model()` で変えられます。別リージョンでは接頭辞も変わります（例：米国は `us.`）
+- **事前準備**：AWS アカウント側で、そのモデルを呼び出せる状態（権限・利用申請）になっている必要があります
+- **料金と送信先**：AWS の従量課金です。入力した内容は Anthropic の API ではなく AWS（Amazon Bedrock）に送信されます
+- `ANTHROPIC_API_KEY` と両方設定した場合は `USE_BEDROCK=1` が優先されます
+
 ## 自分で確かめる（対話型サンプル）
 
 `interactive_interrupt.py` は本リポジトリ限定の追加教材です（書籍本文には登場しません）。`7-6_interrupt.py` が承認・却下を自動実演するのに対し、こちらはinterruptで止まったグラフを**実際に自分のキーボード入力で再開**します。LLMもネットワークも不要です。

@@ -180,6 +180,30 @@ python 3-4_rag_with_generation.py
 - **データが Anthropic の API に送信されます。** サンプルの社内規程風の文書と質問文がプロンプトとして送られます（架空の内容なので問題ありませんが、自分の文書を差し替える場合は送信してよい内容か確認してください）
 - **出力は実行ごとに変わりえます。** LLM の回答は毎回同一ではありません。「参考文書の内容に基づいて答えているか」を確認の観点にしてください
 
+## Amazon Bedrock 経由で動かす（任意）
+
+Anthropic の API キーの代わりに、AWS の認証情報で Claude を呼ぶこともできます。Amazon Bedrock は、AWS のアカウントで Claude などのモデルを呼び出せるサービスです。
+
+追加で AWS 用の部品が必要です（uv でセットアップした場合は `uv pip install ...`）。
+
+```bash
+pip install "anthropic[bedrock]"
+```
+
+`USE_BEDROCK=1` を設定して実行します。認証には AWS CLI の設定（`aws configure` や `AWS_PROFILE`）がそのまま使われます。
+
+```bash
+export USE_BEDROCK=1                 # PowerShell は $env:USE_BEDROCK="1"、cmd は set USE_BEDROCK=1
+export AWS_PROFILE=your-profile      # 既定のプロファイルを使うなら不要
+python 3-4_rag_with_generation.py
+python interactive_rag.py --generate
+```
+
+- **モデルとリージョン**：既定は東京リージョン（`ap-northeast-1`）の `jp.anthropic.claude-sonnet-4-5-20250929-v1:0` です。`jp.` は、日本国内で処理する「推論プロファイル」（空いている場所へ自動で振り分ける窓口）を指します。リージョンは環境変数 `AWS_REGION` で、モデルは `3-4_rag_with_generation.py` 冒頭の定数 `BEDROCK_MODEL` で変えられます。別リージョンでは接頭辞も変わります（例：米国は `us.`）
+- **事前準備**：AWS アカウント側で、そのモデルを呼び出せる状態（権限・利用申請）になっている必要があります
+- **料金と送信先**：AWS の従量課金です。入力した内容は Anthropic の API ではなく AWS（Amazon Bedrock）に送信されます
+- `ANTHROPIC_API_KEY` と両方設定した場合は `USE_BEDROCK=1` が優先されます
+
 ## 自分で確かめる（interactive_rag.py）
 
 `interactive_rag.py` は、自分で考えた質問で検索・生成を試すための本リポジトリ限定の追加スクリプトです（書籍本文には登場しません）。検索のみならAPIキー不要で、`--generate` を付けたときだけ Anthropic API で回答を生成します。

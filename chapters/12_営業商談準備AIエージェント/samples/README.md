@@ -106,6 +106,29 @@ python interactive_meeting_prep.py
 - **入力した企業名・商談の目的と、ダミー情報源の調査結果が Anthropic の API に送信されます。** 実在の商談情報を入力する場合は、送信してよい内容か確認してください
 - **出力は実行ごとに変わりえます。** 計画のステップ構成・件数・クエリ、ドラフトの文面はモデルの判断です。モデルの返答をJSONとして解釈できなかった場合は、その旨を表示して擬似モデルに自動で切り替わります。「Executor が呼べるのは3つの読み取り専用ツールだけ」「ドラフトは承認されるまで外に出ない」という構造はコード側で保証されており、ここが確認の観点です
 
+## Amazon Bedrock 経由で動かす（任意）
+
+Anthropic の API キーの代わりに、AWS の認証情報で Claude を呼ぶこともできます。Amazon Bedrock は、AWS のアカウントで Claude などのモデルを呼び出せるサービスです。
+
+追加で AWS 用の部品が必要です（uv でセットアップした場合は `uv pip install ...`）。
+
+```bash
+pip install "anthropic[bedrock]"
+```
+
+`USE_BEDROCK=1` を設定して実行します。認証には AWS CLI の設定（`aws configure` や `AWS_PROFILE`）がそのまま使われます。
+
+```bash
+export USE_BEDROCK=1                 # PowerShell は $env:USE_BEDROCK="1"、cmd は set USE_BEDROCK=1
+export AWS_PROFILE=your-profile      # 既定のプロファイルを使うなら不要
+python interactive_meeting_prep.py
+```
+
+- **モデルとリージョン**：既定は東京リージョン（`ap-northeast-1`）の `jp.anthropic.claude-sonnet-4-6` です。`jp.` は、日本国内で処理する「推論プロファイル」（空いている場所へ自動で振り分ける窓口）を指します。リージョンは環境変数 `AWS_REGION` で、モデルは `interactive_meeting_prep.py` 冒頭の定数 `BEDROCK_MODEL` で変えられます。別リージョンでは接頭辞も変わります（例：米国は `us.`）
+- **事前準備**：AWS アカウント側で、そのモデルを呼び出せる状態（権限・利用申請）になっている必要があります
+- **料金と送信先**：AWS の従量課金です。入力した内容は Anthropic の API ではなく AWS（Amazon Bedrock）に送信されます
+- `ANTHROPIC_API_KEY` と両方設定した場合は `USE_BEDROCK=1` が優先されます
+
 ## 自分で確かめる（interactive_meeting_prep.py）
 
 `interactive_meeting_prep.py` は、12-2 のパイプラインのノードを import し、商談相手・目的の入力と HITL の判断（承認・修正・却下）を標準入力で行う本リポジトリ限定の追加スクリプトです（書籍本文には登場しません）。12-2 の自動デモとの違いは、`Command(resume=...)` に渡す判断を実際にあなたが入力する点です。APIキーなしでも擬似モデルで流れ全体を確認できます。

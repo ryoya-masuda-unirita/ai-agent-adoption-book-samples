@@ -10,3 +10,5 @@ numpy>=1.22,<2
 
 # 3-4 の「生成あり」モードを試す場合のみ（任意）。
 # anthropic>=0.40
+# Amazon Bedrock 経由で動かす場合は、代わりに:
+# anthropic[bedrock]>=0.40

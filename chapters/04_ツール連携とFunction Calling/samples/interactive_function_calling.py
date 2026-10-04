@@ -8,6 +8,8 @@
 モデルの判断（tool_use が返るかどうか）を観察するには、環境変数
 ANTHROPIC_API_KEY と anthropic パッケージ（pip install anthropic）が必要。
 従量課金が発生し、質問文とツール定義が Anthropic の API に送信される点に注意。
+ANTHROPIC_API_KEY の代わりに USE_BEDROCK=1 を設定すると、4-2 と同じく
+Amazon Bedrock 経由で呼ぶ（導入: pip install "anthropic[bedrock]"）。
 
 キー未設定のときは、4-2 のドライランに倣い、①「アプリ→モデルに何が
 送られるか」だけを表示する構造確認モードで動く（モデルの判断は再現しない）。
@@ -35,10 +37,11 @@ run_tool = fc_minimal.run_tool
 
 def check_api_ready() -> bool:
     """APIで動かせるかを起動時に確認し、案内を表示する。"""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    if not (os.environ.get("ANTHROPIC_API_KEY") or fc_minimal.use_bedrock()):
         print("[案内] 環境変数 ANTHROPIC_API_KEY が未設定です。")
         print("       ツールが発火するかどうかはモデルが判断するため、観察にはAPIキーが必要です。")
         print("       export ANTHROPIC_API_KEY=sk-ant-... を設定して再実行してください。")
+        print("       （Amazon Bedrock 経由なら export USE_BEDROCK=1）")
         print("       このまま続けると、①（アプリ→モデルに何が送られるか）だけを表示します。\n")
         return False
     try:
@@ -50,15 +53,13 @@ def check_api_ready() -> bool:
 
 def observe_with_api(question: str) -> None:
     """実際にAPIを呼び、どのツールがどの引数で呼ばれたかを表示する。"""
-    import anthropic
-
-    client = anthropic.Anthropic()  # APIキーは環境変数 ANTHROPIC_API_KEY から
+    client, model = fc_minimal.make_client()  # 接続先の切り替えは 4-2 と共通
     messages = [{"role": "user", "content": question}]
     round_count = 0
 
     while True:
         response = client.messages.create(
-            model=MODEL,
+            model=model,
             max_tokens=1024,
             tools=TOOLS,
             messages=messages,

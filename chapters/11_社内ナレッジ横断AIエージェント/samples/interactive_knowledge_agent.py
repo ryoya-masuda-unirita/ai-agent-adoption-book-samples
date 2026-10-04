@@ -19,6 +19,8 @@ Conditional Edge → 回答生成＋引用付与）をそのまま import して
    回答生成ノードだけを実際の Claude 呼び出しに差し替える。検索対象は引き続き
    ダミーコーパス（_common.py）で、権限フィルタと引用対応表の仕組みは同一。
    （anthropic の導入: pip install anthropic）
+   ANTHROPIC_API_KEY の代わりに USE_BEDROCK=1 を設定すると、AWS の認証情報を使って
+   Amazon Bedrock 経由で Claude を呼ぶ（導入: pip install "anthropic[bedrock]"）。
 
 実行:
     python interactive_knowledge_agent.py                  # 一般の開発者として
@@ -46,6 +48,18 @@ from langgraph.graph import StateGraph, START, END
 
 # 実行時は公式ドキュメントで最新のモデル名を確認して置き換える
 MODEL = "claude-sonnet-4-6"
+# Bedrock では推論プロファイルのIDで指定する（jp. は日本国内で処理するプロファイル）
+BEDROCK_MODEL = "jp.anthropic.claude-sonnet-4-6"
+BEDROCK_REGION = "ap-northeast-1"
+
+
+def _use_bedrock() -> bool:
+    """USE_BEDROCK=1 なら、Anthropic の API ではなく Amazon Bedrock 経由で呼ぶ。"""
+    return os.environ.get("USE_BEDROCK") == "1"
+
+
+def _model_name() -> str:
+    return BEDROCK_MODEL if _use_bedrock() else MODEL
 
 # ファイル名にハイフンを含むため、11-2 のモジュールはパス指定で読み込む（11-8 と同じ手法）
 _here = pathlib.Path(__file__).parent
@@ -82,7 +96,7 @@ def _make_live_answer(client):
             f"# 質問\n{state['question']}\n\n# 参考文書\n{refs}"
         )
         resp = client.messages.create(
-            model=MODEL, max_tokens=1024,
+            model=_model_name(), max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
         text = "".join(b.text for b in resp.content if b.type == "text")
@@ -114,16 +128,22 @@ def build_graph(answer_fn):
 
 def _setup_client():
     """本番モードが使えるなら Anthropic クライアントを返し、無理ならその理由を案内する。"""
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("[メモ] ANTHROPIC_API_KEY 未設定のため、擬似モデルで回答を生成します。")
+    if not (os.environ.get("ANTHROPIC_API_KEY") or _use_bedrock()):
+        print("[メモ] ANTHROPIC_API_KEY / USE_BEDROCK 未設定のため、擬似モデルで回答を生成します。")
         return None
     try:
-        from anthropic import Anthropic
+        import anthropic
+        if _use_bedrock():
+            import boto3  # noqa: F401  # anthropic[bedrock] で入る。存在確認のみ
     except ImportError:
         print("[メモ] anthropic パッケージ未導入のため、擬似モデルで回答を生成します"
-              "（本番モードは pip install anthropic）。")
+              "（本番モードは pip install anthropic、Bedrock は pip install 'anthropic[bedrock]'）。")
         return None
-    return Anthropic()
+    if _use_bedrock():
+        # 認証は AWS の認証情報（AWS_PROFILE 等）から。APIキーは使わない
+        return anthropic.AnthropicBedrock(
+            aws_region=os.environ.get("AWS_REGION", BEDROCK_REGION))
+    return anthropic.Anthropic()
 
 
 def ask(graph, question: str, user: dict) -> None:

@@ -6,6 +6,7 @@ langchain-core>=0.3
 # 本番モード（実モデルに自走させる場合）のみ必要：
 # langchain>=0.3
 # langchain-anthropic>=0.3
+# （Amazon Bedrock 経由で動かす場合は langchain-anthropic の代わりに langchain-aws）
 #
 # 7-7（LangSmith Studio で可視化）で `langgraph dev` を使う場合のみ必要：
 # langgraph-cli[inmem]>=0.2

@@ -2,3 +2,4 @@
 # Function Calling の往復を実際に試すには anthropic SDK と APIキーが必要。
 # APIキーなし（ドライラン）で構造だけ確認する場合は、何もインストールせず実行できる。
 anthropic>=0.40
+# Amazon Bedrock 経由で動かす場合のみ（任意）: pip install "anthropic[bedrock]"

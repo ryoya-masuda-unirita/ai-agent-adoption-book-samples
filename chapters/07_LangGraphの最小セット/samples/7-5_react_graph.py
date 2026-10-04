@@ -58,11 +58,21 @@ def build_model():
 
     無ければドライラン用の FakeReActModel を返す。
     """
-    if os.getenv("ANTHROPIC_API_KEY"):
+    use_bedrock = os.getenv("USE_BEDROCK") == "1"
+    if os.getenv("ANTHROPIC_API_KEY") or use_bedrock:
         try:
             from langchain.chat_models import init_chat_model
 
-            model = init_chat_model("claude-sonnet-4-6", model_provider="anthropic")
+            if use_bedrock:
+                # Amazon Bedrock 経由（要 langchain-aws。認証は AWS の認証情報から）。
+                # モデルは推論プロファイルのIDで指定する（jp. は日本国内で処理）
+                model = init_chat_model(
+                    "jp.anthropic.claude-sonnet-4-6",
+                    model_provider="bedrock_converse",
+                    region_name=os.getenv("AWS_REGION", "ap-northeast-1"),
+                )
+            else:
+                model = init_chat_model("claude-sonnet-4-6", model_provider="anthropic")
             from langchain_core.tools import tool
 
             @tool("get_stock")  # execute_tool_calls が探す名前に合わせる（既定は関数名になる）
@@ -155,7 +165,7 @@ model, real_mode = build_model()
 # ノードは追記したい分を返すだけで、積む作業はリデューサ add_messages の仕事。
 def main():
     if not real_mode:
-        print("[メモ] ANTHROPIC_API_KEY 未設定のため、擬似モデルで流れだけを表示します。\n")
+        print("[メモ] ANTHROPIC_API_KEY / USE_BEDROCK 未設定のため、擬似モデルで流れだけを表示します。\n")
     graph = build_graph()
     question = "商品A-100の在庫を確認して。品切れなら代替品B-200の在庫も調べて、まとめて報告して。"
     result = graph.invoke(
